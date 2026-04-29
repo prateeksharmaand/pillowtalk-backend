@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: pillowtalk-backend
+    runtime: node
+    region: oregon          # or: frankfurt, singapore, ohio, virginia
+    plan: free              # free tier — upgrades available
+    rootDir: .              # if the repo root IS the backend folder
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Generate a strong secret: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: JWT_SECRET
+        generateValue: true   # Render auto-generates a random value
+
+      # Optional: restrict CORS to your app's domain
+      # - key: ALLOWED_ORIGINS
+      #   value: https://your-flutter-web-app.com
+
+    autoDeploy: true          # redeploy automatically on every git push
