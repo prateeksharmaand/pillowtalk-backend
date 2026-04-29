@@ -1,7 +1,9 @@
+require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { PORT } = require('./src/config');
+const { pool } = require('./src/data/db');
 const { setupWebSocket } = require('./src/websocket/handler');
 
 const authRoutes = require('./src/routes/auth');
@@ -30,7 +32,6 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Request logger
 app.use((req, _, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
@@ -43,13 +44,17 @@ app.use('/api/matches', matchRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/cards', cardRoutes);
 
-// Health check
-app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+app.get('/health', async (_, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'connected', time: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'error', db: 'disconnected' });
+  }
+});
 
-// 404 handler
 app.use((req, res) => res.status(404).json({ error: `Route ${req.path} not found` }));
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
@@ -60,9 +65,19 @@ const { wsBroadcast } = setupWebSocket(server);
 app.locals.wsBroadcast = wsBroadcast;
 
 // ── Start ───────────────────────────────────────────────────────────────────
-// Render (and most cloud hosts) require binding to 0.0.0.0
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`
+async function start() {
+  // Verify DB connection before accepting traffic
+  try {
+    await pool.query('SELECT 1');
+    console.log('✅  PostgreSQL connected');
+  } catch (err) {
+    console.error('❌  PostgreSQL connection failed:', err.message);
+    console.error('    Set DATABASE_URL in your .env file or Render environment variables.');
+    process.exit(1);
+  }
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`
 ╔═══════════════════════════════════════════════╗
 ║   PillowTalk Backend  ·  http://localhost:${PORT}  ║
 ║   WebSocket           ·  ws://localhost:${PORT}/ws ║
@@ -82,4 +97,7 @@ server.listen(PORT, '0.0.0.0', () => {
   GET   /api/cards/decks/:deckId
   GET   /health
 `);
-});
+  });
+}
+
+start();
